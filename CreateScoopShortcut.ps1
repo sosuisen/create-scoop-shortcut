@@ -24,21 +24,54 @@ Get-ChildItem $appsDir -Directory | ForEach-Object {
     $appName = $_.Name
     $currentPath = Join-Path $_.FullName "current"
 
-    # .exe を探す（currentフォルダ直下のみ）
-    $exePath = Get-ChildItem $currentPath -Filter *.exe -File -Recurse |
-               Sort-Object LastWriteTime -Descending |
-               Select-Object -First 1
-
-    if ($exePath) {
-        $lnkPath = Join-Path $outputDir "$appName.lnk"
-        $wshShell = New-Object -ComObject WScript.Shell
-        $shortcut = $wshShell.CreateShortcut($lnkPath)
-        $shortcut.TargetPath = $exePath.FullName
-        $shortcut.WorkingDirectory = $exePath.DirectoryName
-        $shortcut.IconLocation = $exePath.FullName
-        $shortcut.Save()
-        Write-Host "Created shortcut for $appName"
+    # .exe を探す（トップディレクトリ優先）
+    $topExeFiles = Get-ChildItem $currentPath -Filter *.exe -File |
+                   Sort-Object LastWriteTime -Descending
+    
+    if ($topExeFiles) {
+        # アプリ用のディレクトリを作成
+        $appOutputDir = Join-Path $outputDir $appName
+        if (-not (Test-Path $appOutputDir)) {
+            New-Item -ItemType Directory -Path $appOutputDir | Out-Null
+        }
+        
+        # トップディレクトリに.exeが見つかった場合、それらのみを処理
+        foreach ($exeFile in $topExeFiles) {
+            $exeName = [System.IO.Path]::GetFileNameWithoutExtension($exeFile.Name)
+            $lnkPath = Join-Path $appOutputDir "$exeName.lnk"
+            $wshShell = New-Object -ComObject WScript.Shell
+            $shortcut = $wshShell.CreateShortcut($lnkPath)
+            $shortcut.TargetPath = $exeFile.FullName
+            $shortcut.WorkingDirectory = $exeFile.DirectoryName
+            $shortcut.IconLocation = $exeFile.FullName
+            $shortcut.Save()
+            Write-Host "Created shortcut for $appName/$exeName"
+        }
     } else {
-        Write-Host "No .exe found for $appName"
+        # トップディレクトリに.exeがない場合のみ、サブディレクトリを探す
+        $exeFiles = Get-ChildItem $currentPath -Filter *.exe -File -Recurse |
+                    Sort-Object LastWriteTime -Descending
+        
+        if ($exeFiles) {
+            # アプリ用のディレクトリを作成
+            $appOutputDir = Join-Path $outputDir $appName
+            if (-not (Test-Path $appOutputDir)) {
+                New-Item -ItemType Directory -Path $appOutputDir | Out-Null
+            }
+            
+            foreach ($exeFile in $exeFiles) {
+                $exeName = [System.IO.Path]::GetFileNameWithoutExtension($exeFile.Name)
+                $lnkPath = Join-Path $appOutputDir "$exeName.lnk"
+                $wshShell = New-Object -ComObject WScript.Shell
+                $shortcut = $wshShell.CreateShortcut($lnkPath)
+                $shortcut.TargetPath = $exeFile.FullName
+                $shortcut.WorkingDirectory = $exeFile.DirectoryName
+                $shortcut.IconLocation = $exeFile.FullName
+                $shortcut.Save()
+                Write-Host "Created shortcut for $appName/$exeName"
+            }
+        } else {
+            Write-Host "No .exe found for $appName"
+        }
     }
 }
